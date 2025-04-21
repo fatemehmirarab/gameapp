@@ -9,7 +9,7 @@ func IsValid(phoneNo string) bool {
 	if phoneNo[0:2] != "09" {
 		return false
 	}
-	if _, error := strconv.Atoi(phoneNo[2:]); error == nil {
+	if _, error := strconv.Atoi(phoneNo[2:]); error != nil {
 		return false
 	}
 	return true
