@@ -1,7 +1,7 @@
 package entity
 
-type Category struct{
-	Id uint
-	Name string
+type Category struct {
+	Id          uint
+	Name        string
 	Description string
 }

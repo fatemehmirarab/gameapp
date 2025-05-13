@@ -3,6 +3,9 @@ package userservice
 import (
 	"fmt"
 
+	"crypto/md5"
+	"encoding/hex"
+
 	"github.com/fatemehmirarab/gameapp/entity"
 	"github.com/fatemehmirarab/gameapp/pkg/phonenumber"
 )
@@ -10,19 +13,28 @@ import (
 type Repository interface {
 	IsPhoneNumberUnique(phoneNumber string) (bool, error)
 	Register(user entity.User) (entity.User, error)
+	GetUserByPhoneNumber(phoneNumber string) (entity.User, bool, error)
+	GetUserById(userId uint) (entity.User, error)
+}
+
+type AuthGenerator interface {
+	CreateAccessToken(user entity.User) (string, error)
+	RefreshToken(user entity.User) (string, error)
 }
 
 type Service struct {
+	Auth AuthGenerator
 	Repo Repository
 }
 
-func New(repo Repository) Service {
-	return Service{Repo: repo}
+func New(auth AuthGenerator, repo Repository) Service {
+	return Service{Auth: auth, Repo: repo}
 }
 
 type RegisterRequest struct {
 	Name        string
 	PhoneNumber string
+	Password    string
 }
 
 type RegisterResponse struct {
@@ -47,10 +59,16 @@ func (s Service) Register(request RegisterRequest) (RegisterResponse, error) {
 	if len(request.Name) <= 3 {
 		return RegisterResponse{}, fmt.Errorf("name should be greater than 3")
 	}
+
+	if len(request.Password) < 8 {
+		return RegisterResponse{}, fmt.Errorf("password should be greater than 8")
+	}
+
 	user := entity.User{
 		Id:          0,
 		Name:        request.Name,
 		PhoneNumber: request.PhoneNumber,
+		Password:    getMD5Hash(request.Password),
 	}
 	createdUser, err := s.Repo.Register(user)
 	if err != nil {
@@ -58,4 +76,60 @@ func (s Service) Register(request RegisterRequest) (RegisterResponse, error) {
 	}
 	return RegisterResponse{
 		User: createdUser}, err
+}
+
+type LoginRequest struct {
+	PhoneNumber string
+	Password    string
+}
+
+type LoginResponse struct {
+	AccessToken  string
+	RefreshToken string
+}
+
+func (s Service) Login(req LoginRequest) (LoginResponse, error) {
+	user, exist, err := s.Repo.GetUserByPhoneNumber(req.Password)
+	if err != nil {
+		return LoginResponse{}, fmt.Errorf("unexpected error : %w", err)
+	}
+	if !exist {
+		return LoginResponse{}, fmt.Errorf("user or password dose not exist")
+	}
+
+	if user.Password != getMD5Hash(req.Password) {
+		return LoginResponse{}, fmt.Errorf("user or password dose not exist")
+	}
+
+	accessToken, err := s.Auth.CreateAccessToken(user)
+	if err != nil {
+		return LoginResponse{}, fmt.Errorf("unexpected error : %w", err)
+	}
+
+	refreshToken, err := s.Auth.RefreshToken(user)
+	if err != nil {
+		return LoginResponse{}, fmt.Errorf("unexpected error : %w", err)
+	}
+	return LoginResponse{AccessToken: accessToken, RefreshToken: refreshToken}, nil
+}
+
+func getMD5Hash(text string) string {
+	hash := md5.Sum([]byte(text))
+	return hex.EncodeToString(hash[:])
+}
+
+type ProfileRequest struct {
+	UserId uint
+}
+type ProfileResponse struct {
+	Name string `json:"name"`
+}
+
+func (s Service) Profile(req ProfileRequest) (ProfileResponse, error) {
+	user, err := s.Repo.GetUserById(req.UserId)
+	if err != nil {
+		return ProfileResponse{}, fmt.Errorf("unexpected error : %w", err)
+	}
+	return ProfileResponse{user.Name}, nil
+
 }

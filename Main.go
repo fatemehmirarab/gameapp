@@ -1,110 +1,48 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
-	"io"
-	"log"
-	"net/http"
+	"time"
 
-	"github.com/fatemehmirarab/gameapp/entity"
+	"github.com/fatemehmirarab/gameapp/config"
+	"github.com/fatemehmirarab/gameapp/delivery/myhttpserver"
 	mySQL "github.com/fatemehmirarab/gameapp/repository/mysql"
 	"github.com/fatemehmirarab/gameapp/service/userservice"
+	"github.com/fatemehmirarab/gameapp/service/userservice/authservice"
+)
+
+const (
+	expirationTime = time.Hour * 24
+	accessSubject  = "at"
+	refreshSubject = "rt"
 )
 
 func main() {
 
-	log.Println("start")
-	mux := http.NewServeMux()
-	mux.HandleFunc("/user/register", userRegisterHandler)
-	mux.HandleFunc("/healthchek", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"message":"server is ok"}`)
-	})
-	http.ListenAndServe("localhost:8080", mux)
-
-}
-func userRegisterHandler(writer http.ResponseWriter, req *http.Request) {
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Println("🔥 Recovered panic:", r)
-			writer.WriteHeader(http.StatusInternalServerError)
-			writer.Write([]byte(`{"error":"internal server error"}`))
-		}
-	}()
-
-	fmt.Println("▶️ Handler started")
-
-	if req.Method != http.MethodPost {
-		fmt.Println("❌ Invalid method:", req.Method)
-		writer.WriteHeader(http.StatusMethodNotAllowed)
-		writer.Write([]byte(`{"error":"invalid method"}`))
-		return
+	cfg := config.Config{
+		Auth: authservice.Config{
+			ExpirationTime:        expirationTime,
+			RefreshExpirationTime: expirationTime * 7,
+			AccessSubject:         accessSubject,
+			RefreshSubject:        refreshSubject,
+		},
+		HttpServer: config.HttpServer{
+			Port: 8080,
+		},
+		MySQL: mySQL.Config{
+			UserName: "fatemeh",
+			PassWord: "Mirarab",
+			Port:     3306,
+			Host:     "localhost",
+			DBName:   "mydb",
+		},
 	}
 
-	data, err := io.ReadAll(req.Body)
-	if err != nil {
-		fmt.Println("❌ Error reading body:", err)
-		writer.WriteHeader(http.StatusBadRequest)
-		writer.Write([]byte(fmt.Sprintf(`{"error":"%s"}`, err.Error())))
-		return
-	}
-	fmt.Println("📦 Body received:", string(data))
+	authSvc := authservice.New(cfg.Auth)
+	mysqlrepo := mySQL.New(cfg.MySQL)
+	userSvc := userservice.New(authSvc, mysqlrepo)
 
-	var userReq userservice.RegisterRequest
-	if err := json.Unmarshal(data, &userReq); err != nil {
-		fmt.Println("❌ JSON unmarshal error:", err)
-		writer.WriteHeader(http.StatusBadRequest)
-		writer.Write([]byte(fmt.Sprintf(`{"error":"%s"}`, err.Error())))
-		return
-	}
-	fmt.Printf("✅ Parsed user: %+v\n", userReq)
+	server := myhttpserver.New(cfg, authSvc, userSvc)
 
-	mysqlRepo := mySQL.New()
-	if mysqlRepo == nil {
-		fmt.Println("❌ mysqlRepo is nil")
-		writer.WriteHeader(http.StatusInternalServerError)
-		writer.Write([]byte(`{"error":"database error"}`))
-		return
-	}
-
-	userSvc := userservice.New(mysqlRepo)
-	if userSvc.Repo == nil {
-		fmt.Println("❌ userSvc is nil")
-		writer.WriteHeader(http.StatusInternalServerError)
-		writer.Write([]byte(`{"error":"service init failed"}`))
-		return
-	}
-
-	_, errRegister := userSvc.Register(userReq)
-	if errRegister != nil {
-		fmt.Println("❌ Register failed:", errRegister)
-		writer.WriteHeader(http.StatusInternalServerError)
-		writer.Write([]byte(fmt.Sprintf(`{"error":"%s"}`, errRegister.Error())))
-		return
-	}
-
-	writer.Write([]byte(`{"message":"user created"}`))
-}
-
-func test() {
-	mysqlRepo := mySQL.New()
-
-	user := entity.User{
-		Id:          0,
-		Name:        "Mohammad",
-		PhoneNumber: "09383837745",
-	}
-
-	if _, err := mysqlRepo.IsPhoneNumberUnique(user.PhoneNumber); err != nil {
-		fmt.Println("isPhoneNumberUnique error %w", err)
-	}
-
-	createdUser, err := mysqlRepo.Register(user)
-
-	if err != nil {
-		fmt.Println("can not create %w", err)
-	} else {
-		fmt.Println("User Created %w", createdUser)
-	}
+	server.Serve()
 
 }

@@ -1,0 +1,5 @@
+production:
+  dialect: mysql
+  datasource: fatemeh:Mirarab@(localhost:3306)/mydb?parseTime=true
+  dir: migrations
+  table: migrations
