@@ -3,8 +3,11 @@ package mySQL
 import (
 	"database/sql"
 	"fmt"
+	"net/http"
 
 	"github.com/fatemehmirarab/gameapp/entity"
+	"github.com/fatemehmirarab/gameapp/pkg/errormessage"
+	"github.com/fatemehmirarab/gameapp/pkg/richerror"
 )
 
 func (d *MySQLDB) IsPhoneNumberUnique(phoneNumber string) (bool, error) {
@@ -34,7 +37,7 @@ func (d *MySQLDB) Register(user entity.User) (entity.User, error) {
 }
 
 func (d *MySQLDB) GetUserByPhoneNumber(phoneNumber string) (entity.User, bool, error) {
-
+	const op richerror.Op = "mySQL.GetUserByPhoneNumber"
 	user := entity.User{}
 	row := d.db.QueryRow(`select * from users where  phone_number = ? `, phoneNumber)
 	err := ScanUser(row, &user)
@@ -42,13 +45,14 @@ func (d *MySQLDB) GetUserByPhoneNumber(phoneNumber string) (entity.User, bool, e
 		if err == sql.ErrNoRows {
 			return entity.User{}, false, nil
 		} else {
-			return entity.User{}, false, fmt.Errorf("can not execute command %w", err)
+			return entity.User{}, false, richerror.New(op).WithError(err).WithMessage(errormessage.CanNotExecuteCommand).WithKind(http.StatusInternalServerError)
 		}
 	}
 	return user, true, nil
 }
 
 func (d *MySQLDB) GetUserById(userId uint) (entity.User, error) {
+	const op richerror.Op = "mySQL.GetUserById"
 	user := entity.User{}
 	row := d.db.QueryRow(`select * from users where  id = ? `, userId)
 	err := ScanUser(row, &user)
@@ -56,7 +60,7 @@ func (d *MySQLDB) GetUserById(userId uint) (entity.User, error) {
 		if err == sql.ErrNoRows {
 			return entity.User{}, nil
 		} else {
-			return entity.User{}, fmt.Errorf("can not execute command %w", err)
+			return entity.User{}, richerror.New(op).WithMessage(errormessage.CanNotExecuteCommand).WithError(err)
 		}
 	}
 	return user, nil

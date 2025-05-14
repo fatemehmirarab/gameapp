@@ -2,12 +2,15 @@ package userservice
 
 import (
 	"fmt"
+	"net/http"
 
 	"crypto/md5"
 	"encoding/hex"
 
 	"github.com/fatemehmirarab/gameapp/entity"
+	"github.com/fatemehmirarab/gameapp/pkg/errormessage"
 	"github.com/fatemehmirarab/gameapp/pkg/phonenumber"
+	"github.com/fatemehmirarab/gameapp/pkg/richerror"
 )
 
 type Repository interface {
@@ -89,9 +92,10 @@ type LoginResponse struct {
 }
 
 func (s Service) Login(req LoginRequest) (LoginResponse, error) {
+	const op richerror.Op = "userservice.Login"
 	user, exist, err := s.Repo.GetUserByPhoneNumber(req.Password)
 	if err != nil {
-		return LoginResponse{}, fmt.Errorf("unexpected error : %w", err)
+		return LoginResponse{}, richerror.New(op).WithError(err).WithKind(http.StatusInternalServerError).WithMessage(errormessage.UnExpectedError)
 	}
 	if !exist {
 		return LoginResponse{}, fmt.Errorf("user or password dose not exist")
@@ -126,9 +130,10 @@ type ProfileResponse struct {
 }
 
 func (s Service) Profile(req ProfileRequest) (ProfileResponse, error) {
+	const op richerror.Op = "userservice.Profile"
 	user, err := s.Repo.GetUserById(req.UserId)
 	if err != nil {
-		return ProfileResponse{}, fmt.Errorf("unexpected error : %w", err)
+		return ProfileResponse{}, richerror.New(op).WithError(err).WithMeta(map[string]interface{}{"req": req})
 	}
 	return ProfileResponse{user.Name}, nil
 
